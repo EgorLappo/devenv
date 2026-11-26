@@ -10,13 +10,21 @@
 let
   inherit (nixpkgs) lib;
 
-  pkgsBySystem = lib.genAttrs systems (
-    system:
+  # nixpkgs with overlays.default
+  importPkgs =
+    {
+      system,
+      unfree ? [ ],
+    }:
     import nixpkgs {
       inherit system;
       overlays = [ overlay ];
-    }
-  );
+      config = lib.optionalAttrs (unfree != [ ]) {
+        allowUnfreePredicate = p: builtins.elem (lib.getName p) unfree;
+      };
+    };
+
+  pkgsBySystem = lib.genAttrs systems (system: importPkgs { inherit system; });
 in
 rec {
   inherit systems;
@@ -32,10 +40,19 @@ rec {
   # flake-utils' eachSystem, except that `f` gets nixpkgs with overlays.default
   # instead of the system name:
   #   outputs = { devenv, ... }: devenv.lib.eachSystem (pkgs: { devShells.default = ...; });
-  eachSystem =
+  eachSystem = eachSystemWith { };
+
+  # eachSystem, with nixpkgs that allows the unfree packages named in `unfree`:
+  #   devenv.lib.eachSystemWith { unfree = [ "sratoolkit" ]; } (pkgs: { ... })
+  eachSystemWith =
+    {
+      unfree ? [ ],
+    }:
     f:
     let
-      perSystem = lib.mapAttrs (_: f) pkgsBySystem;
+      pkgsOf =
+        system: if unfree == [ ] then pkgsBySystem.${system} else importPkgs { inherit system unfree; };
+      perSystem = lib.genAttrs systems (system: f (pkgsOf system));
       outputNames = lib.unique (lib.concatMap lib.attrNames (lib.attrValues perSystem));
     in
     lib.genAttrs outputNames (
@@ -58,8 +75,11 @@ rec {
       # and the image alike
       packages ? (_: [ ]),
       env ? { },
+      # unfree packages to allow, by name: [ "sratoolkit" ]. hydra does not
+      # build unfree packages, so these build locally
+      unfree ? [ ],
     }:
-    eachSystem (
+    eachSystemWith { inherit unfree; } (
       pkgs:
       let
         inherit (pkgs.stdenv.hostPlatform) isLinux;
