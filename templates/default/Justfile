@@ -1,0 +1,47 @@
+# push code and the image to sherlock, pull results back
+#
+#   just              list recipes
+#   just up           build the image, then push code and image
+#   just sync         code only: jobs run the synced code and the image holds
+#                     only the environment, so only a flake change needs `just up`
+#   just sync --dry   preview what sync would change
+#
+# then on sherlock, in the synced checkout: sbatch cluster/example.sbatch
+
+project := "my-project"
+remote := "sdtn"
+# literal because the dtn's restricted shell rejects $
+dest := "/home/groups/noahr/egor" / project
+
+default:
+    @just --list
+
+# build the image as <name>.sif
+container:
+    nix run .#sif
+
+# push code (also see .rsync-exclude)
+sync *flags:
+    ssh {{remote}} 'mkdir -p {{dest}}'
+    rsync -az --delete --info=stats1 --exclude-from=.rsync-exclude \
+        {{ if flags =~ "--dry" { "--dry-run -v" } else { "" } }} \
+        ./ {{remote}}:{{dest}}/
+
+# push the image
+image:
+    @ls *.sif >/dev/null 2>&1 || { echo "no .sif here -- run 'just container' first" >&2; exit 1; }
+    ssh {{remote}} 'mkdir -p {{dest}}'
+    rsync -a --partial --progress *.sif {{remote}}:{{dest}}/
+
+# build and push all
+up: container sync image
+
+# pull results back (name a subpath to narrow)
+pull target="results":
+    mkdir -p {{target}}
+    rsync -az --partial --progress {{remote}}:{{dest}}/{{target}}/ ./{{target}}/
+
+# --- on sherlock, in the synced checkout ---
+
+queue:
+    squeue --me -o '%.18i %.9P %.14j %.2t %.10M %.6D %R'

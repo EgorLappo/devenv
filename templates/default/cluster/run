@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# run a command in the project's image, e.g. as the last line of an sbatch
+# script:   bash cluster/run python scripts/fit.py
+# the image holds the environment from flake.nix; the code is the synced checkout
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [ -z "${SIF:-}" ]; then
+	sifs=("$root"/*.sif)
+	if [ ${#sifs[@]} -ne 1 ] || [ ! -f "${sifs[0]}" ]; then
+		echo "cluster/run: expected one .sif in $root (just up), or set SIF" >&2
+		exit 1
+	fi
+	SIF="${sifs[0]}"
+fi
+
+# apptainer binds $HOME and the cwd; the shared filesystems must be asked for
+binds=(--bind "$root")
+for dir in /scratch /oak /home/groups; do
+	[ -d "$dir" ] && binds+=(--bind "$dir")
+done
+
+# --cleanenv keeps the host's environment out of the job; slurm's goes in
+for var in ${!SLURM_@}; do
+	export "APPTAINERENV_$var=${!var}"
+done
+
+exec apptainer exec --cleanenv "${binds[@]}" --pwd "$PWD" "$SIF" "$@"

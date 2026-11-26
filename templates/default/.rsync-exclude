@@ -1,0 +1,22 @@
+# excludes for pushing to the cluster; `just pull` takes an explicit target
+
+.git/
+.claude/
+.direnv/
+.envrc
+.venv
+.ruff_cache/
+.pytest_cache/
+__pycache__/
+.ipynb_checkpoints/
+
+# written on the cluster
+results/
+logs/
+*.out
+
+# the image goes up with `just image`; the second pattern is rsync's temporary
+# name for an image on its way up, which a sync's --delete would otherwise
+# remove mid-transfer
+*.sif
+.*.sif.*
