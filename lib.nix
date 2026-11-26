@@ -256,6 +256,10 @@ rec {
         contents = [
           root
           pkgs.dockerTools.fakeNss
+          # /etc/ssl/certs: apptainer brings no certificates from the host, and
+          # without them https from a job (curl, git, pip, python's ssl) cannot
+          # verify. root links no /etc, so they come in here
+          pkgs.dockerTools.caCertificates
         ];
         # apptainer unpacks it right away
         compressor = "none";
